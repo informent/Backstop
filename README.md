@@ -37,3 +37,23 @@ Start-Process .\Backstop.exe -ArgumentList '--preview-restore "D:\Snapshots\NEWE
 The report classifies targets as NewFile, Identical, Conflict or Blocked. Existing files are never overwritten; filesystem links and directory/file collisions are blockers. The report folder must already exist, and the report filename must be new. Exit code 0 means a report was created; exit code 2 means invalid inputs, failed integrity checks or a report write failure. Analysis runs headlessly. A preview describes the current filesystem and must be refreshed if files change before restoring.
 
 The comparison UI is still under development.
+
+## Automatic setup
+
+Windows setup packages install Backstop for your current account, bundle the .NET runtime, create a Start menu shortcut and register an uninstaller. A desktop shortcut is optional. No administrator password or manual file copying is required. Existing settings and saved data stay in their current locations. The portable ZIP remains available.
+
+Installer builds are being validated in the **Automatic setup** workflow. Once published, download `Backstop-vVERSION-setup.exe` from Releases and run it.
+
+For unattended deployment:
+
+```powershell
+Start-Process .\Backstop-vVERSION-setup.exe -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-' -Wait -PassThru
+```
+
+Build from source with the [open-source Inno Setup compiler](https://github.com/jrsoftware/issrc) installed:
+
+```powershell
+pwsh -File scripts/Build-Setup.ps1 -Verify
+```
+
+The verification option installs into a temporary test folder, checks reinstall and launch, then uninstalls. It runs on the hosted Windows runner during CI. It does not remove existing user settings or backups.
