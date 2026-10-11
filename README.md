@@ -17,3 +17,23 @@ Backstop replaces OpenBackup. New builds use Backstop.exe and Backstop.csproj. E
 Existing settings and data locations retain the OpenBackup folder name for compatibility. Keep these folders when upgrading; no automatic move or data format change is required.
 
 The existing OpenBackup scheduled-task name is retained to replace the same task rather than create a second schedule. Run Install task after installing the new executable to update its path.
+
+## Snapshot analysis
+
+Compare two verified snapshots without changing them:
+
+```powershell
+Start-Process .\Backstop.exe -ArgumentList '--compare "D:\Snapshots\OLDER" "D:\Snapshots\NEWER" --report "D:\Reports\comparison.json"' -Wait -PassThru
+```
+
+The JSON report classifies each file as Added, Removed, Modified or Unchanged and reports the net byte change. Both snapshots must pass integrity checks.
+
+Inspect a restore destination without writing into it:
+
+```powershell
+Start-Process .\Backstop.exe -ArgumentList '--preview-restore "D:\Snapshots\NEWER" "D:\Restore" --report "D:\Reports\restore.json"' -Wait -PassThru
+```
+
+The report classifies targets as NewFile, Identical, Conflict or Blocked. Existing files are never overwritten; filesystem links and directory/file collisions are blockers. The report folder must already exist, and the report filename must be new. Exit code 0 means a report was created; exit code 2 means invalid inputs, failed integrity checks or a report write failure. Analysis runs headlessly. A preview describes the current filesystem and must be refreshed if files change before restoring.
+
+The comparison UI is still under development.

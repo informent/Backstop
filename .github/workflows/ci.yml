@@ -11,7 +11,9 @@ jobs:
         with: { dotnet-version: 10.0.x }
       - run: dotnet run --project tests/BackupEngineTests.csproj --nologo
       - run: dotnet run --project tests/ScheduleTests.csproj --nologo
+      - run: dotnet run --project tests/SnapshotAnalysisTests.csproj --nologo
       - run: pwsh -File tests/Test-Release.ps1
+      - run: pwsh -File tests/Test-Analysis.ps1 -Exe ./test-output/Backstop.exe
       - name: Verify product branding
         shell: pwsh
         run: |
