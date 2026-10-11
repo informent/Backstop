@@ -1,6 +1,6 @@
 using System.Text.Json;
 using System.IO;
-namespace OpenBackup;
+namespace Backstop;
 public sealed record BackupProfile(string? Source, string? Destination, BackupSchedule Schedule, DateTime? LastRunLocal, int RetentionCount = 10);
 public static class ProfileStore
 {

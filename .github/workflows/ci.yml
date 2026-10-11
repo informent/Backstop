@@ -12,3 +12,16 @@ jobs:
       - run: dotnet run --project tests/BackupEngineTests.csproj --nologo
       - run: dotnet run --project tests/ScheduleTests.csproj --nologo
       - run: pwsh -File tests/Test-Release.ps1
+      - name: Verify product branding
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD 'test-output/Backstop.exe'
+          $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($exe)
+          if ($info.ProductName -ne 'Backstop' -or $info.FileDescription -ne 'Backstop') { throw 'Executable product branding is incorrect' }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Backstop-win-x64
+          path: |
+            test-output/*.exe
+            test-output/*.dll
+          if-no-files-found: error

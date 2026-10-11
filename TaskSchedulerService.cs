@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace OpenBackup;
+namespace Backstop;
 
 public static class TaskSchedulerService
 {

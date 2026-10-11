@@ -4,11 +4,11 @@
     <TargetFramework>net10.0-windows</TargetFramework>
     <UseWPF>true</UseWPF><UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
-    <Version>1.5.0</Version>
+    <Version>1.5.1</Version>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <EnableDefaultPageItems>false</EnableDefaultPageItems>
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
-  </PropertyGroup>
+  <Product>Backstop</Product><Title>Backstop</Title><Company>informent</Company></PropertyGroup>
   <ItemGroup>
     <Compile Include="App.xaml.cs;MainWindow.xaml.cs;BackupEngine.cs;ScheduleEngine.cs;ProfileStore.cs;ScheduledRunner.cs;TaskSchedulerService.cs;RetentionEngine.cs;ActivityLog.cs" />
     <ApplicationDefinition Include="App.xaml" /><Page Include="MainWindow.xaml" />
