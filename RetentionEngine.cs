@@ -1,7 +1,7 @@
 using System.IO;
 using System.Text.Json;
 
-namespace OpenBackup;
+namespace Backstop;
 
 public sealed record RetentionCandidate(string SnapshotId, string Path, DateTime CreatedUtc, long Bytes);
 public sealed record RetentionPlan(int Keep, IReadOnlyList<RetentionCandidate> Retained, IReadOnlyList<RetentionCandidate> Remove, IReadOnlyList<string> Skipped);

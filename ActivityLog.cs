@@ -1,5 +1,5 @@
 using System.IO;
-namespace OpenBackup;
+namespace Backstop;
 public static class ActivityLog
 {
     public static string PathOnDisk => System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenBackup", "activity.log");

@@ -1,5 +1,5 @@
 using System.Windows;
-namespace OpenBackup;
+namespace Backstop;
 public partial class App : System.Windows.Application
 {
     protected override void OnStartup(StartupEventArgs e)

@@ -3,7 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using Forms = System.Windows.Forms;
 
-namespace OpenBackup;
+namespace Backstop;
 
 public partial class MainWindow : Window
 {
@@ -57,12 +57,12 @@ public partial class MainWindow : Window
 
     private void SaveProfile() => ProfileStore.Save(profile with { Source = source, Destination = destination });
     private void RetentionChanged(object sender, SelectionChangedEventArgs e) { if (retentionBox.SelectedItem is int count) { profile = profile with { RetentionCount = count }; ProfileStore.Save(profile with { Source = source, Destination = destination }); } }
-    private void ViewLog_Click(object sender, RoutedEventArgs e) { var text = File.Exists(ActivityLog.PathOnDisk) ? File.ReadAllText(ActivityLog.PathOnDisk) : "No activity has been recorded yet."; System.Windows.MessageBox.Show(text, "OpenBackup activity log", MessageBoxButton.OK, MessageBoxImage.Information); }
+    private void ViewLog_Click(object sender, RoutedEventArgs e) { var text = File.Exists(ActivityLog.PathOnDisk) ? File.ReadAllText(ActivityLog.PathOnDisk) : "No activity has been recorded yet."; System.Windows.MessageBox.Show(text, "Backstop activity log", MessageBoxButton.OK, MessageBoxImage.Information); }
     private void InstallTask_Click(object sender, RoutedEventArgs e)
     {
         var hours = ScheduleInterval.SelectedItem is ComboBoxItem item && int.TryParse(item.Tag?.ToString(), out var parsed) ? parsed : 24;
-        var ok = TaskSchedulerService.Install(Environment.ProcessPath ?? System.IO.Path.Combine(AppContext.BaseDirectory, "OpenBackup.exe"), hours);
-        VerificationText.Text = ok ? "Windows Task Scheduler task installed. OpenBackup can now run while closed." : "Windows Task Scheduler could not create the task.";
+        var ok = TaskSchedulerService.Install(Environment.ProcessPath ?? System.IO.Path.Combine(AppContext.BaseDirectory, "Backstop.exe"), hours);
+        VerificationText.Text = ok ? "Windows Task Scheduler task installed. Backstop can now run while closed." : "Windows Task Scheduler could not create the task.";
         StatusText.Text = ok ? "Task installed" : "Task setup failed";
     }
 

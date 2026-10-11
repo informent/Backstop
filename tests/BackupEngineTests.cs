@@ -1,4 +1,4 @@
-using OpenBackup;
+using Backstop;
 var root = Path.Combine(Path.GetTempPath(), "openbackup-" + Guid.NewGuid().ToString("N")); var source = Path.Combine(root, "source"); var destination = Path.Combine(root, "snapshots"); Directory.CreateDirectory(source); File.WriteAllText(Path.Combine(source, "notes.txt"), "important");
 var snapshot = BackupEngine.CreateSnapshot(source, destination); if (snapshot.Files.Count != 1 || !BackupEngine.VerifySnapshot(Path.Combine(destination, snapshot.Id))) throw new Exception("Fresh snapshot did not verify.");
 if (!Throws(() => BackupEngine.CreateSnapshot(source, Path.Combine(source, "nested")))) throw new Exception("Nested destination was not rejected.");

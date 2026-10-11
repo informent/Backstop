@@ -1,4 +1,4 @@
-namespace OpenBackup;
+namespace Backstop;
 
 public sealed record BackupSchedule(bool Enabled, TimeSpan Interval, DateTime StartLocal);
 

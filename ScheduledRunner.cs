@@ -1,4 +1,4 @@
-namespace OpenBackup;
+namespace Backstop;
 public static class ScheduledRunner
 {
     public static bool RunIfDue(BackupProfile profile, DateTime nowLocal, string? profilePath = null, string? activityLogPath = null)

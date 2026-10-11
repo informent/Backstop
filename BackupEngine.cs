@@ -2,7 +2,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text.Json;
 
-namespace OpenBackup;
+namespace Backstop;
 
 public sealed record BackupFile(string RelativePath, long Length, string Sha256);
 public sealed record BackupSnapshot(string Id, DateTime CreatedUtc, string Source, string Destination, IReadOnlyList<BackupFile> Files);
