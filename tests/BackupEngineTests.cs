@@ -11,6 +11,44 @@ var manifestPath = Path.Combine(snapshotRoot, "manifest.json"); var originalMani
 File.WriteAllText(manifestPath, originalManifest.Replace("notes.txt", "..\\\\escape.txt"));
 if (!ThrowsData(() => BackupEngine.PlanRestore(snapshotRoot, Path.Combine(root, "unsafe")))) throw new Exception("Manifest traversal was not rejected.");
 File.WriteAllText(manifestPath, originalManifest);
+// Every restore target must be preflighted before any file is copied.
+Directory.CreateDirectory(Path.Combine(source, "nested")); File.WriteAllText(Path.Combine(source, "nested", "later.txt"), "later");
+var multi = BackupEngine.CreateSnapshot(source, destination); var multiRoot = Path.Combine(destination, multi.Id);
+var blocked = Path.Combine(root, "blocked"); Directory.CreateDirectory(blocked); Directory.CreateDirectory(Path.Combine(blocked, "notes.txt"));
+if (!ThrowsIo(() => BackupEngine.RestoreSnapshot(multiRoot, blocked)) || Directory.Exists(Path.Combine(blocked, "nested"))) throw new Exception("Directory collision was not preflighted.");
+Directory.Delete(Path.Combine(blocked, "notes.txt")); File.WriteAllText(Path.Combine(blocked, "nested"), "keep parent");
+if (!ThrowsIo(() => BackupEngine.RestoreSnapshot(multiRoot, blocked)) || File.Exists(Path.Combine(blocked, "notes.txt"))) throw new Exception("File parent collision was not preflighted.");
+var reserved = Path.Combine(root, "reserved"); Directory.CreateDirectory(reserved); File.WriteAllText(Path.Combine(reserved, "manifest.json"), "private source");
+var reservedOutput = Path.Combine(root, "reserved-output");
+if (!ThrowsData(() => BackupEngine.CreateSnapshot(reserved, reservedOutput)) || Directory.GetFileSystemEntries(reservedOutput).Length != 0 || File.ReadAllText(Path.Combine(reserved, "manifest.json")) != "private source") throw new Exception("Reserved metadata collision corrupted a snapshot.");
+File.WriteAllText(manifestPath, "{\"Files\":null}"); if (BackupEngine.VerifySnapshot(snapshotRoot)) throw new Exception("Null file list verified.");
+File.WriteAllText(manifestPath, "{"); if (BackupEngine.VerifySnapshot(snapshotRoot)) throw new Exception("Malformed manifest verified.");
+File.WriteAllText(manifestPath, originalManifest);
+foreach (var unsafePath in new[] { "notes.txt:stream", "notes.txt.", "notes.txt " })
+{
+    File.WriteAllText(manifestPath, originalManifest.Replace("notes.txt", unsafePath));
+    if (BackupEngine.VerifySnapshot(snapshotRoot)) throw new Exception("Windows path alias verified.");
+}
+File.WriteAllText(manifestPath, originalManifest);
+var outside = Path.Combine(root, "outside"); Directory.CreateDirectory(outside); File.WriteAllText(Path.Combine(outside, "private.txt"), "private");
+var link = Path.Combine(source, "linked");
+try
+{
+    Directory.CreateSymbolicLink(link, outside);
+}
+catch (Exception ex) when (ex is UnauthorizedAccessException or IOException) { Console.WriteLine("INFO: symbolic link creation unavailable"); }
+if (Directory.Exists(link))
+{
+    if (!ThrowsData(() => BackupEngine.CreateSnapshot(source, destination))) throw new Exception("Linked source folder was followed.");
+    if (!ThrowsData(() => BackupEngine.CreateSnapshot(outside, Path.Combine(link, "new-library")))) throw new Exception("Linked destination ancestor was followed.");
+    if (Directory.Exists(Path.Combine(outside, "new-library"))) throw new Exception("Linked output was written.");
+    var linkedTarget = Path.Combine(link, "restore");
+    if (!ThrowsData(() => BackupEngine.RestoreSnapshot(snapshotRoot, linkedTarget))) throw new Exception("Linked restore ancestor was followed.");
+    Directory.Delete(link);
+    var snapshotLink = Path.Combine(root, "snapshot-link"); Directory.CreateSymbolicLink(snapshotLink, snapshotRoot);
+    if (BackupEngine.VerifySnapshot(snapshotLink)) throw new Exception("Linked snapshot root verified.");
+    Directory.Delete(snapshotLink);
+}
 File.AppendAllText(Path.Combine(snapshotRoot, "notes.txt"), "changed"); if (BackupEngine.VerifySnapshot(snapshotRoot)) throw new Exception("Tampered snapshot verified incorrectly."); Directory.Delete(root, true); Console.WriteLine("PASS: atomic snapshot, restore preflight, traversal defense, collision safety, and tamper detection");
 static bool Throws(Action action) { try { action(); return false; } catch (InvalidOperationException) { return true; } }
 static bool ThrowsIo(Action action) { try { action(); return false; } catch (IOException) { return true; } }

@@ -42,12 +42,12 @@ The comparison UI is still under development.
 
 Windows setup packages install Backstop for your current account, bundle the .NET runtime, create a Start menu shortcut and register an uninstaller. A desktop shortcut is optional. No administrator password or manual file copying is required. Existing settings and saved data stay in their current locations. The portable ZIP remains available.
 
-Download `Backstop-v1.6.1-setup.exe` from Releases and run it.
+Download `Backstop-v1.7.0-setup.exe` from Releases and run it.
 
 For unattended deployment:
 
 ```powershell
-Start-Process .\Backstop-v1.6.1-setup.exe -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-' -Wait -PassThru
+Start-Process .\Backstop-v1.7.0-setup.exe -ArgumentList '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-' -Wait -PassThru
 ```
 
 Build from source with the [open-source Inno Setup compiler](https://github.com/jrsoftware/issrc) installed:
@@ -57,3 +57,9 @@ pwsh -File scripts/Build-Setup.ps1 -Verify
 ```
 
 The verification option installs into a temporary test folder, checks reinstall and launch, then uninstalls. It runs on the hosted Windows runner during CI. It does not remove existing user settings or backups.
+
+## Snapshot safety in 1.7
+
+Capture and restore reject filesystem links in every existing ancestor, including linked source folders, destination libraries and snapshot manifests. Capture checks each directory before descending and records lengths from the copied bytes. Restore preflights directory collisions and files blocking parent folders before writing its first file, then repeats path checks during copying.
+
+The root filename `manifest.json` is reserved for snapshot metadata. A source using that filename is rejected with an explanation and its incomplete snapshot is removed. Nested files named `manifest.json` are supported. Restore remains a file copy operation, not a filesystem transaction: keep source snapshots and restore destinations unchanged while a restore runs.
