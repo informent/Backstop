@@ -19,6 +19,8 @@ public static class BackupEngine
         var sourceRoot = NormalizeDirectory(source);
         var destinationRoot = NormalizeDirectory(destination);
         if (destinationRoot.StartsWith(sourceRoot, StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("The snapshot destination cannot be inside the source folder.");
+        EnsureNoLinks(sourceRoot);
+        EnsureNoLinks(destinationRoot);
         Directory.CreateDirectory(destinationRoot);
         var id = DateTime.UtcNow.ToString("yyyyMMdd-HHmmss");
         var finalRoot = Path.Combine(destinationRoot, id);
@@ -30,15 +32,16 @@ public static class BackupEngine
         try
         {
             var files = new List<BackupFile>();
-            foreach (var path in Directory.EnumerateFiles(sourceRoot, "*", SearchOption.AllDirectories))
+            foreach (var path in EnumerateRegularFiles(sourceRoot))
             {
                 var info = new FileInfo(path);
                 if ((info.Attributes & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException($"Backup stopped at reparse-point file: {Path.GetRelativePath(sourceRoot, path)}");
                 var relative = ValidateRelativePath(Path.GetRelativePath(sourceRoot, path));
+                if (relative.Equals("manifest.json", StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("The source contains the reserved root filename manifest.json.");
                 var target = ContainedPath(workingRoot, relative, "Source produced an unsafe relative path.");
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 File.Copy(path, target, false);
-                files.Add(new BackupFile(relative, info.Length, Hash(target)));
+                files.Add(new BackupFile(relative, new FileInfo(target).Length, Hash(target)));
             }
             var snapshot = new BackupSnapshot(id, DateTime.UtcNow, sourceRoot.TrimEnd(Path.DirectorySeparatorChar), destinationRoot.TrimEnd(Path.DirectorySeparatorChar), files.OrderBy(x => x.RelativePath, StringComparer.OrdinalIgnoreCase).ToArray());
             File.WriteAllText(Path.Combine(workingRoot, "manifest.json"), JsonSerializer.Serialize(snapshot, JsonOptions));
@@ -55,8 +58,11 @@ public static class BackupEngine
     public static BackupSnapshot PreviewRestore(string snapshotRoot)
     {
         var manifest = Path.Combine(snapshotRoot, "manifest.json");
+        EnsureNoLinks(manifest);
         if (!File.Exists(manifest)) throw new FileNotFoundException("Snapshot manifest not found", manifest);
-        return JsonSerializer.Deserialize<BackupSnapshot>(File.ReadAllText(manifest)) ?? throw new InvalidDataException("Invalid snapshot manifest");
+        var snapshot = JsonSerializer.Deserialize<BackupSnapshot>(File.ReadAllText(manifest)) ?? throw new InvalidDataException("Invalid snapshot manifest");
+        if (snapshot.Files is null || snapshot.Files.Any(x => x is null)) throw new InvalidDataException("Snapshot file list is invalid.");
+        return snapshot;
     }
 
     public static RestorePlan PlanRestore(string snapshotRoot, string target, bool requireEmptyTargets = true)
@@ -70,12 +76,13 @@ public static class BackupEngine
         {
             var relative = ValidateRelativePath(file.RelativePath);
             if (!seen.Add(relative)) throw new InvalidDataException($"Snapshot contains a duplicate path: {relative}");
-            if (file.Length < 0 || file.Sha256.Length != 64 || !file.Sha256.All(Uri.IsHexDigit)) throw new InvalidDataException($"Snapshot metadata is invalid: {relative}");
+            if (file.Length < 0 || file.Sha256 is null || file.Sha256.Length != 64 || !file.Sha256.All(Uri.IsHexDigit)) throw new InvalidDataException($"Snapshot metadata is invalid: {relative}");
             var sourcePath = ContainedPath(snapshotBase, relative, "Snapshot contains an unsafe source path.");
             var targetPath = ContainedPath(targetBase, relative, "Snapshot contains an unsafe target path.");
+            EnsureNoLinks(sourcePath);
             if (!File.Exists(sourcePath)) throw new InvalidDataException($"Snapshot file is missing: {relative}");
             if (new FileInfo(sourcePath).Length != file.Length || !Hash(sourcePath).Equals(file.Sha256, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException($"Snapshot integrity check failed: {relative}");
-            if (requireEmptyTargets && File.Exists(targetPath)) throw new IOException($"Restore stopped because the file already exists: {relative}");
+            if (requireEmptyTargets) EnsureWritableTarget(targetPath);
             files.Add(new RestoreFile(relative, sourcePath, targetPath, file.Length, file.Sha256));
         }
         return new RestorePlan(snapshot, snapshotBase, targetBase, files);
@@ -85,15 +92,20 @@ public static class BackupEngine
     {
         try { PlanRestore(snapshotRoot, Path.Combine(Path.GetTempPath(), "openbackup-verify-" + Guid.NewGuid().ToString("N")), false); return true; }
         catch (InvalidDataException) { return false; }
-        catch (FileNotFoundException) { return false; }
+        catch (IOException) { return false; }
+        catch (JsonException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
     }
 
     public static int RestoreSnapshot(string snapshotRoot, string target)
     {
         var plan = PlanRestore(snapshotRoot, target);
+        EnsureWritableTarget(plan.TargetRoot, allowDirectory: true);
         Directory.CreateDirectory(plan.TargetRoot);
         foreach (var file in plan.Files)
         {
+            EnsureNoLinks(file.SourcePath);
+            EnsureWritableTarget(file.TargetPath);
             Directory.CreateDirectory(Path.GetDirectoryName(file.TargetPath)!);
             File.Copy(file.SourcePath, file.TargetPath, false);
         }
@@ -104,8 +116,41 @@ public static class BackupEngine
     {
         if (string.IsNullOrWhiteSpace(value) || Path.IsPathRooted(value)) throw new InvalidDataException("Snapshot contains an invalid path.");
         var normalized = value.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
-        if (normalized.Split(Path.DirectorySeparatorChar).Any(part => part is "" or "." or "..")) throw new InvalidDataException("Snapshot contains an unsafe relative path.");
+        if (normalized.Split(Path.DirectorySeparatorChar).Any(part => part is "" or "." or ".." || part.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 || part.EndsWith(" ") || part.EndsWith("."))) throw new InvalidDataException("Snapshot contains an unsafe relative path.");
         return normalized;
+    }
+
+    private static IEnumerable<string> EnumerateRegularFiles(string root)
+    {
+        var pending = new Stack<string>(); pending.Push(root);
+        while (pending.Count > 0)
+        {
+            var directory = pending.Pop(); EnsureNoLinks(directory);
+            foreach (var entry in Directory.EnumerateFileSystemEntries(directory))
+            {
+                var attributes = File.GetAttributes(entry);
+                if ((attributes & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException("Snapshot source contains a filesystem link.");
+                if ((attributes & FileAttributes.Directory) != 0) pending.Push(entry); else yield return entry;
+            }
+        }
+    }
+
+    private static void EnsureNoLinks(string path)
+    {
+        for (string? current = Path.GetFullPath(path); !string.IsNullOrEmpty(current); current = Path.GetDirectoryName(current))
+        {
+            try { if ((File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0) throw new InvalidDataException("Filesystem links are not allowed in snapshot or restore paths."); }
+            catch (FileNotFoundException) { }
+            catch (DirectoryNotFoundException) { }
+        }
+    }
+
+    private static void EnsureWritableTarget(string path, bool allowDirectory = false)
+    {
+        EnsureNoLinks(path);
+        if (File.Exists(path) || (!allowDirectory && Directory.Exists(path))) throw new IOException("Restore destination already exists.");
+        for (var parent = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(path))); !string.IsNullOrEmpty(parent); parent = Path.GetDirectoryName(parent))
+            if (File.Exists(parent)) throw new IOException("Restore destination has a file where a directory is required.");
     }
 
     private static string NormalizeDirectory(string path) => Path.GetFullPath(path).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
