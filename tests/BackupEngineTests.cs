@@ -5,6 +5,7 @@ if (!Throws(() => BackupEngine.CreateSnapshot(source, Path.Combine(source, "nest
 var snapshotRoot = Path.Combine(destination, snapshot.Id);
 var plan = BackupEngine.PlanRestore(snapshotRoot, Path.Combine(root, "planned")); if (plan.Files.Count != 1 || plan.Files[0].RelativePath != "notes.txt") throw new Exception("Restore preflight plan is incorrect.");
 var restore = Path.Combine(root, "restore"); if (BackupEngine.RestoreSnapshot(snapshotRoot, restore) != 1 || File.ReadAllText(Path.Combine(restore, "notes.txt")) != "important") throw new Exception("Restore did not recreate the original file.");
+if (Directory.EnumerateDirectories(Path.GetDirectoryName(restore)!, ".backstop-restore-*.partial").Any()) throw new Exception("Successful restore left a staging directory behind.");
 var collisionTarget = Path.Combine(root, "collision"); Directory.CreateDirectory(collisionTarget); File.WriteAllText(Path.Combine(collisionTarget, "notes.txt"), "keep me");
 if (!ThrowsIo(() => BackupEngine.RestoreSnapshot(snapshotRoot, collisionTarget)) || File.ReadAllText(Path.Combine(collisionTarget, "notes.txt")) != "keep me") throw new Exception("Restore collision preflight modified an existing file.");
 var manifestPath = Path.Combine(snapshotRoot, "manifest.json"); var originalManifest = File.ReadAllText(manifestPath);
@@ -14,6 +15,9 @@ File.WriteAllText(manifestPath, originalManifest);
 // Every restore target must be preflighted before any file is copied.
 Directory.CreateDirectory(Path.Combine(source, "nested")); File.WriteAllText(Path.Combine(source, "nested", "later.txt"), "later");
 var multi = BackupEngine.CreateSnapshot(source, destination); var multiRoot = Path.Combine(destination, multi.Id);
+var mergeTarget = Path.Combine(root, "merge-target"); Directory.CreateDirectory(mergeTarget); File.WriteAllText(Path.Combine(mergeTarget, "unrelated.txt"), "preserve");
+if (BackupEngine.RestoreSnapshot(multiRoot, mergeTarget) != 2 || File.ReadAllText(Path.Combine(mergeTarget, "unrelated.txt")) != "preserve" || File.ReadAllText(Path.Combine(mergeTarget, "nested", "later.txt")) != "later") throw new Exception("Staged restore did not preserve unrelated destination files.");
+if (Directory.EnumerateDirectories(Path.GetDirectoryName(mergeTarget)!, ".backstop-restore-*.partial").Any()) throw new Exception("Restore left a staging directory behind.");
 var blocked = Path.Combine(root, "blocked"); Directory.CreateDirectory(blocked); Directory.CreateDirectory(Path.Combine(blocked, "notes.txt"));
 if (!ThrowsIo(() => BackupEngine.RestoreSnapshot(multiRoot, blocked)) || Directory.Exists(Path.Combine(blocked, "nested"))) throw new Exception("Directory collision was not preflighted.");
 Directory.Delete(Path.Combine(blocked, "notes.txt")); File.WriteAllText(Path.Combine(blocked, "nested"), "keep parent");
