@@ -101,15 +101,68 @@ public static class BackupEngine
     {
         var plan = PlanRestore(snapshotRoot, target);
         EnsureWritableTarget(plan.TargetRoot, allowDirectory: true);
-        Directory.CreateDirectory(plan.TargetRoot);
-        foreach (var file in plan.Files)
+        var targetExisted = Directory.Exists(plan.TargetRoot);
+        var parent = Directory.GetParent(plan.TargetRoot.TrimEnd(Path.DirectorySeparatorChar))?.FullName
+            ?? throw new IOException("Restore destination must have a parent folder.");
+        var createdDirectories = new List<string>();
+        var promotedFiles = new List<RestoreFile>();
+        var stage = Path.Combine(parent, $".backstop-restore-{Guid.NewGuid():N}.partial");
+        try
         {
-            EnsureNoLinks(file.SourcePath);
-            EnsureWritableTarget(file.TargetPath);
-            Directory.CreateDirectory(Path.GetDirectoryName(file.TargetPath)!);
-            File.Copy(file.SourcePath, file.TargetPath, false);
+            CreateDirectoriesTracked(parent, createdDirectories);
+            Directory.CreateDirectory(stage);
+            foreach (var file in plan.Files)
+            {
+                EnsureNoLinks(file.SourcePath);
+                var stagedPath = ContainedPath(stage, file.RelativePath, "Snapshot contains an unsafe restore path.");
+                CreateDirectoriesTracked(Path.GetDirectoryName(stagedPath)!, createdDirectories);
+                File.Copy(file.SourcePath, stagedPath, false);
+                if (new FileInfo(stagedPath).Length != file.Length || !Hash(stagedPath).Equals(file.Sha256, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException($"Restore copy verification failed: {file.RelativePath}");
+            }
+
+            // Prepare every restored byte before changing the destination. Promotion uses
+            // same-volume moves and rolls back files already moved if a later move fails.
+            EnsureNoLinks(plan.TargetRoot);
+            if (!targetExisted && Directory.Exists(plan.TargetRoot)) throw new IOException("Restore destination appeared while the restore was being prepared.");
+            foreach (var file in plan.Files) EnsureWritableTarget(file.TargetPath);
+            CreateDirectoriesTracked(plan.TargetRoot, createdDirectories);
+            foreach (var file in plan.Files)
+            {
+                EnsureWritableTarget(file.TargetPath);
+                CreateDirectoriesTracked(Path.GetDirectoryName(file.TargetPath)!, createdDirectories);
+                var stagedPath = ContainedPath(stage, file.RelativePath, "Snapshot contains an unsafe restore path.");
+                File.Move(stagedPath, file.TargetPath);
+                promotedFiles.Add(file);
+            }
+            return promotedFiles.Count;
         }
-        return plan.Files.Count;
+        catch
+        {
+            foreach (var file in promotedFiles.AsEnumerable().Reverse())
+            {
+                try { if (File.Exists(file.TargetPath) && Hash(file.TargetPath).Equals(file.Sha256, StringComparison.OrdinalIgnoreCase)) File.Delete(file.TargetPath); }
+                catch { }
+            }
+            foreach (var directory in createdDirectories.Distinct(StringComparer.OrdinalIgnoreCase).OrderByDescending(x => x.Length))
+            {
+                try { if (Directory.Exists(directory) && !Directory.EnumerateFileSystemEntries(directory).Any()) Directory.Delete(directory); }
+                catch { }
+            }
+            throw;
+        }
+        finally { if (Directory.Exists(stage)) Directory.Delete(stage, true); }
+    }
+
+    private static void CreateDirectoriesTracked(string path, List<string> created)
+    {
+        var missing = new Stack<string>();
+        for (var current = Path.GetFullPath(path); !string.IsNullOrEmpty(current) && !Directory.Exists(current); current = Path.GetDirectoryName(current))
+        {
+            if (File.Exists(current)) throw new IOException("A file blocks the restore directory path.");
+            missing.Push(current);
+        }
+        while (missing.Count > 0) { var directory = missing.Pop(); Directory.CreateDirectory(directory); created.Add(directory); }
     }
 
     private static string ValidateRelativePath(string value)
